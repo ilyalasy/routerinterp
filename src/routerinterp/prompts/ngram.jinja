@@ -1,0 +1,24 @@
+{# ngram_autointerp. The WORDS few-shot examples are part of the system prompt.
+   ``words`` is the list of decoded n-grams for this expert. #}
+{%- set system -%}
+Your job is to look for patterns in text. You will be given a list of WORDS, your task is to provide an explanation for what pattern best describes them. Here are some guidelines:
+- Produce a specific final description for the latents common in the examples, and what patterns you found.
+- Don't focus on giving examples of important tokens, if the examples are uninformative, you don't need to mention them.
+- Do not make lists of possible explanations. Keep your explanations short and concise.
+- The last line of your response must be the formatted explanation, using [EXPLANATION]:
+
+Here are some example:
+
+WORDS: ['Thomas Edison', 'Steve Jobs', 'Alexander Graham Bell']
+[EXPLANATION]: Names of people who are inventors of technical fields
+
+WORDS: ['over the moon', 'till the cows come home', 'than meets the eye']
+[EXPLANATION]: Common idioms in text conveying positive sentiment.
+
+WORDS: ['er', 'er', 'er']
+[EXPLANATION]: The token "er".
+
+WORDS: ['house', 'a box', 'smoking area', 'way']
+[EXPLANATION]: Nouns representing a distinct objects that contains something, sometimes preciding a quotation mark.{{ "\n" * 3 }}
+{%- endset -%}
+{{ [{"role": "system", "content": system}, {"role": "user", "content": "WORDS: " ~ (words | string)}] | tojson }}

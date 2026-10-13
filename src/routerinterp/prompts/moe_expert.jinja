@@ -1,0 +1,96 @@
+{# expert_activation and routerinterp share this prompt.
+   Few-shot dialogue is chosen here:
+     routed  -> pair contrastive (feature fires, expert not selected)
+     grouped -> grouped activating examples
+     else    -> flat example list
+   ``examples`` is preformatted text. ``neg_header`` is the negative-example
+   label, chosen in Python from ``routed``. #}
+{% if routed %}
+{% set contrastive_section %}
+Each group comes from one SAE feature associated with this expert. Routed examples show windows where that feature fires AND this expert is selected. Hard-negative examples (under a "{{ neg_header }}" header) show windows where the SAME feature fires but this expert is NOT selected. Use the contrast to describe the routing-relevant context — what makes the expert fire given the feature — not merely where the feature activates. Write a positive, specific description; do not frame the output as "activates on X but not Y".
+{% endset %}
+{% set fewshot_user %}
+Group 1:
+Example 1:  Patriots <<tight end>> Rob Gronkowski had
+Example 2:  namely <<tackle>> Byron Bell at left tackle
+{{ neg_header }}
+Example 1:  fishermen <<tackle>> the rising costs together
+Example 2:  at the <<end>> of a long day she slept
+
+Group 2:
+Example 1:  preheat oven to <<350>> degrees Fahrenheit
+Example 2:  bake at <<375>> for twenty minutes
+{{ neg_header }}
+Example 1:  the battle of <<375>> BC changed the region
+Example 2:  apartment <<350>> on Main Street is vacant
+{% endset %}
+{%- set fewshot_assistant -%}
+American-football position terms specifically in roster and game-reporting context — "tight end", "tackle" as an offensive-line role — not the everyday verb "tackle" or noun "end" in general prose. Also numerals specifically as oven temperatures after "preheat" or "bake at" in recipes, not as years or street numbers.
+{%- endset -%}
+{% elif grouped %}
+{%- set contrastive_section -%}
+
+{%- endset -%}
+{% set fewshot_user %}
+Group 1:
+Example 1:  Patriots <<tight end>> Rob Gronkowski had
+Example 2:  LSU defensive <<end>> Isaiah Washington speaks
+Example 3:  namely <<tackle>> Byron Bell at left tackle
+
+Group 2:
+Example 1:  preheat oven to <<350>> degrees Fahrenheit
+Example 2:  bake at <<375>> for twenty minutes
+Example 3:  reduce heat to <<low>> and simmer
+
+Group 3:
+Example 1:  The parties <<hereby>> agree as follows
+Example 2:  <<Notwithstanding>> the foregoing provisions
+Example 3:  <<pursuant>> to Section 12 of the Act
+
+Group 4:
+Example 1:  started on 500 mg of <<amoxicillin>> twice daily
+Example 2:  prescribed <<ibuprofen>> 400 mg as needed
+Example 3:  increased <<metformin>> dose to 850 mg
+{% endset %}
+{%- set fewshot_assistant -%}
+American-football line and skill-position vocabulary in sports journalism (e.g. "tight end", "defensive end", "tackle" as a roster role). Also numerals and heat-level words in recipe instructions that specify oven temperature or burner setting. Also performative legal adverbs and prepositions ("hereby", "notwithstanding", "pursuant") at the start of binding contractual clauses. Also generic medication names in clinical prescription lines that include a dose and schedule.
+{%- endset -%}
+{% else %}
+{%- set contrastive_section -%}
+
+{%- endset -%}
+{% set fewshot_user %}
+Example 1:  Patriots <<tight end>> Rob Gronkowski had his best
+Example 2:  preheat oven to <<350>> degrees Fahrenheit
+Example 3:  The Tenant <<hereby>> agrees to pay rent
+Example 4:  left <<tackle>> Byron Bell lined up outside
+Example 5:  stir in <<2>> cups flour until combined
+{% endset %}
+{%- set fewshot_assistant -%}
+American-football position terms such as "tight end" or "tackle" in NFL game and roster reporting. Also numerals used as oven temperatures in recipe instructions after cues like "preheat oven to" or "bake at". Also performative legal adverbs such as "hereby" opening a binding clause in a lease or contract.
+{%- endset -%}
+{% endif %}
+{%- set system -%}
+You are a meticulous AI researcher conducting an important investigation into patterns found in language. Your task is to analyze text and provide an explanation that thoroughly encapsulates possible patterns found in it.
+
+You are given text examples with the relevant token(s) wrapped in <<double angle brackets>> (a run of consecutive tokens may be wrapped together). These are contexts where the expert was active. When routing weights are shown in parentheses after an example, they indicate how strongly each token was activated. If the examples are organised into numbered groups, each group was collected from a different SAE feature — but multiple groups may share the same underlying activation pattern.
+{{ contrastive_section }}
+HOW TO WRITE A GOOD DESCRIPTION:
+- MERGE SIMILAR GROUPS. The groups are raw feature data, not pre-identified modes. Look across all groups first: if several groups show the same pattern (same token type, same syntactic role, same domain), merge them into a single description. Only describe as many modes as there are genuinely distinct patterns in the data — this may be fewer than the number of groups, or even just one.
+- FIND PATTERNS, DON'T JUST LIST TOKENS. The highlighted tokens are clues, not the answer. Generalise: state the rule they share — their part of speech, grammatical or structural role, the domain or topic, the format, or what comes before/after them. Concrete examples are welcome when they help a human grasp the pattern (quote a couple of representative tokens or phrases), but a description that is ONLY a list of tokens is useless.
+- DESCRIBE THE CONTEXT, NOT THE SURFACE TOKEN. The same surface token appears in both activating and non-activating windows, so token identity alone is never enough — what matters is the precise context that makes the expert fire. For example, write «"(" immediately following a function name in Python code», not «the token "("».
+- LET LENGTH FOLLOW THE DATA. A single clean pattern needs one sentence. A genuinely polysemantic expert needs one clear description per truly distinct mode. Do NOT force unrelated modes into one summary, and do NOT drop a real mode just to be brief. Avoid repetition and padding.
+- Avoid announcing a count of modes (e.g. "activating in ten distinct contexts") — just describe the modes you actually find.
+- Avoid generic catch-alls like "common function words", "technical text", or "structural delimiters" — those describe nothing and match everything.
+- Do not use numbered lists or bullet points, and do not mention the <<>> markers.
+- NEVER reuse token patterns, surface forms, or domains from the few-shot demonstration — describe only what appears in the actual examples provided.
+- If the examples share no specific distinguishing pattern, say so plainly (e.g. "diverse general English prose with no single trigger"); an honest broad description is correct, an invented specific pattern is a failure.
+
+Respond directly with the explanation.{{ "\n" * 2 }}
+{%- endset -%}
+{{ [
+  {"role": "system", "content": system},
+  {"role": "user", "content": fewshot_user},
+  {"role": "assistant", "content": fewshot_assistant},
+  {"role": "user", "content": "\n" ~ examples ~ "\n"}
+] | tojson }}

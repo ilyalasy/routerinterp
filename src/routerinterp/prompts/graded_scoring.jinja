@@ -1,0 +1,47 @@
+{# Graded scoring.
+   ``explanation`` is the expert description under test.
+   ``examples`` is preformatted ``<example_i>`` text built in explain/prompts.py. #}
+{%- set system -%}
+You are a conservative classifier evaluating an explanation of when one Mixture-of-Experts expert routes a token.
+
+The explanation can contain many unrelated activation modes connected by OR. In each tagged example, only token(s) inside <<double angle brackets>> are candidate routed positions. Judge whether at least one highlighted token, in its exact surrounding context, matches one specific mode in the explanation.
+
+Assign an integer match score:
+0 = no match; unrelated context.
+1 = only superficial token, phrase, or broad-domain overlap.
+2 = plausible but ambiguous or incomplete contextual match.
+3 = clear, specific contextual match.
+4 = direct or near-exact trigger-and-context match.
+
+False positives are costly: the target population is about 15% positive. Do not give 3 or 4 merely because a match is possible, shares a topic, or uses a word named somewhere in the long explanation. Require the highlighted token's role and context to satisfy a concrete described pattern.
+
+Return only one valid JSON object mapping every shown example id to an integer 0 through 4. Include each id exactly once and no other text.
+{%- endset -%}
+{%- set fewshot_user -%}
+Expert activation pattern:
+This expert activates on Fahrenheit oven-setting numerals in recipe instructions immediately after cues such as "preheat oven to" or "bake at", rather than the same numerals used as years, addresses, or scores.
+
+Text examples:
+<example_0>Preheat the oven to <<350>> degrees before adding the bread.</example_0>
+<example_1>The battle in <<350>> BC changed the region.</example_1>
+<example_2>Apartment <<350>> on Main Street is vacant.</example_2>
+<example_3>The oven should reach <<350>> degrees for this recipe.</example_3>
+<example_4>The cookbook's temperature chart lists about <<350>> for cakes.</example_4>
+{%- endset -%}
+{%- set fewshot_assistant -%}
+{"0": 4, "1": 0, "2": 0, "3": 3, "4": 2}
+{%- endset -%}
+{%- set user -%}
+Expert activation pattern:
+{{ explanation }}
+
+Text examples:
+
+{{ examples }}{{ "\n" }}
+{%- endset -%}
+{{ [
+  {"role": "system", "content": system},
+  {"role": "user", "content": fewshot_user},
+  {"role": "assistant", "content": fewshot_assistant},
+  {"role": "user", "content": user}
+] | tojson }}

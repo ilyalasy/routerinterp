@@ -1,0 +1,107 @@
+# ============================================
+# GPT-OSS-20B, BatchTopK SAE k=128 (s128)
+# ============================================
+# s128 is Hugging Face trainer 1 (andyrdt/saes-gpt-oss-20b); s64 is trainer 0.
+# Usage: bash scripts/slurm/collect.sh
+
+collect:
+  model:
+    name: "openai/gpt-oss-20b"
+    dtype: "bfloat16"
+    device: "auto"
+  dataset:
+    name: "monology/pile-uncopyrighted"
+    n_tokens: 10000000
+    seq_len: 1024
+    seed: 0
+    num_proc: 16
+    load_stratified: true
+  sae:
+    source:
+      type: "hf_dictionary_learning"
+      repo_id: "andyrdt/saes-gpt-oss-20b"
+      trainer_id: 1
+      # The published checkpoints are pickled ae.pt. Convert once into the cache.
+      trust_pickle: true
+    hookpoints:
+      - "layers.3"
+      - "layers.7"
+      - "layers.11"
+      - "layers.15"
+      - "layers.19"
+    k: 128
+  output_dir: "artifacts/gpt_oss_s128/collect"
+  # GH200 96GB, seq_len 1024. SAE encode of dict 131072 fills the card.
+  batch_size: 128
+  shard_tokens: 262144 # 256 * 1024 tokens per resumable collect shard.
+  store_dense_residuals: true
+  store_router_logits: true
+  store_expert_writes: true
+  train_frac: 0.8
+  seed: 0
+
+select:
+  input_dir: "artifacts/gpt_oss_s128/collect"
+  output_dir: "artifacts/gpt_oss_s128/select"
+  # Paper layers 4, 8, 12, 16, 20. layers.N is the residual after layer N,
+  # the input to router N+1 (resid_post_layer_N in the SAE repo).
+  hookpoints:
+    - "layers.3"
+    - "layers.7"
+    - "layers.11"
+    - "layers.15"
+    - "layers.19"
+  method: "routing_margin"
+  n: 45
+  batch_size: 128
+  lambda_: 1.0
+  exclusive: true
+  seed: 0
+
+explain:
+  input_dir: "artifacts/gpt_oss_s128/collect"
+  selection_dir: "artifacts/gpt_oss_s128/select"
+  output_dir: "artifacts/gpt_oss_s128/explain"
+  hookpoints:
+    - "layers.3"
+    - "layers.7"
+    - "layers.11"
+    - "layers.15"
+    - "layers.19"
+  method: "routerinterp"
+  explainer_model: "anthropic/claude-sonnet-5"
+  train_positives: 50
+  train_negatives: 50
+  ctx_len: 32
+  max_concurrent: 32
+  example_seed: 0
+
+evaluate:
+  explanations_dir: "artifacts/gpt_oss_s128/explain"
+  output_dir: "artifacts/gpt_oss_s128/evaluate"
+  scorer_model: "openai/gpt-5.6-luna"
+  eval_positives: 15
+  eval_negatives: 85
+  # Paper threshold: grade >= 2.
+  threshold: 2
+  scorer_batch_size: 10
+  max_concurrent: 32
+  scoring_seed: 0
+
+probes:
+  input_dir: "artifacts/gpt_oss_s128/collect"
+  output_dir: "artifacts/gpt_oss_s128/probes"
+  # Appendix B/E: SAE, neuron, PCA, and n-gram probes on all five layers (~1M tokens).
+  # Bigram is the default; the unigram baseline is this section with ngram_type: unigram.
+  bases: ["sae", "neuron", "pca", "ngram"]
+  hookpoints:
+    - "layers.3"
+    - "layers.7"
+    - "layers.11"
+    - "layers.15"
+    - "layers.19"
+  ngram_type: "bigram"
+  n_tokens: 1000000
+  train_frac: 0.8
+  min_tokens_per_expert: 100
+  seed: 0

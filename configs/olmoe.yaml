@@ -1,0 +1,123 @@
+# ============================================
+# OLMoE-1B-7B
+# ============================================
+# Usage: bash scripts/slurm/collect.sh
+
+collect:
+  model:
+    name: "allenai/OLMoE-1B-7B-0125"
+    dtype: "bfloat16"
+    device: "auto"
+  dataset:
+    name: "monology/pile-uncopyrighted"
+    n_tokens: 10000000
+    seq_len: 1024
+    seed: 0
+    num_proc: 16
+    load_stratified: true
+  sae:
+    source:
+      type: "sparsify_wandb"
+      wandb_entity: "moe-interp"
+      wandb_project: "routerinterp"
+    hookpoints:
+      - "layers.2"
+      - "layers.6"
+      - "layers.10"
+      - "layers.14"
+    expansion_factor: 16
+    k: 32
+  output_dir: "artifacts/olmoe/collect"
+  # GH200 96GB, seq_len 1024. One forward fills the card.
+  batch_size: 256
+  shard_tokens: 262144 # 256 * 1024 tokens per resumable collect shard.
+  store_dense_residuals: true # neuron + PCA probes
+  store_router_logits: true
+  store_expert_writes: true # expert-activation + expert strikes back
+  train_frac: 0.8
+  seed: 0
+
+# Retrain from scratch only. Production loads the W&B artifact above.
+# Mix corpus + 100M tokens match Table 5; do not inherit collect's Pile.
+sae_training:
+  model:
+    name: "allenai/OLMoE-1B-7B-0125"
+    dtype: "bfloat16"
+    device: "auto"
+  dataset:
+    name: "allenai/OLMoE-mix-0924"
+    n_tokens: 100000000
+    seq_len: 512
+    seed: 0
+  expansion_factor: 16
+  k: 32
+  lr: 7e-4
+  # GH200 96GB, seq_len 512. Same token load as collect at batch 256.
+  batch_size: 512
+  grad_acc_steps: 1
+  optimizer: "signum"
+  checkpoint_dir: "artifacts/olmoe/sae_checkpoints"
+  output_dir: "artifacts/olmoe/sae_export"
+  save_every: 5000
+  hookpoints:
+    - "layers.2"
+    - "layers.6"
+    - "layers.10"
+    - "layers.14"
+
+select:
+  input_dir: "artifacts/olmoe/collect"
+  output_dir: "artifacts/olmoe/select"
+  hookpoints:
+    - "layers.2"
+    - "layers.6"
+    - "layers.10"
+    - "layers.14"
+  method: "routing_margin"
+  n: 45
+  batch_size: 256
+  lambda_: 1.0
+  exclusive: true
+  seed: 0
+
+explain:
+  input_dir: "artifacts/olmoe/collect"
+  selection_dir: "artifacts/olmoe/select"
+  output_dir: "artifacts/olmoe/explain"
+  hookpoints:
+    - "layers.2"
+    - "layers.6"
+    - "layers.10"
+    - "layers.14"
+  method: "routerinterp"
+  explainer_model: "anthropic/claude-sonnet-5"
+  train_positives: 50
+  train_negatives: 50
+  ctx_len: 32
+  max_concurrent: 32
+  example_seed: 0
+
+evaluate:
+  explanations_dir: "artifacts/olmoe/explain"
+  output_dir: "artifacts/olmoe/evaluate"
+  scorer_model: "openai/gpt-5.6-luna"
+  eval_positives: 15
+  eval_negatives: 85
+  threshold: 2
+  scorer_batch_size: 10
+  max_concurrent: 32
+  scoring_seed: 0
+
+probes:
+  input_dir: "artifacts/olmoe/collect"
+  output_dir: "artifacts/olmoe/probes"
+  bases: ["sae", "neuron", "pca", "ngram"]
+  hookpoints:
+    - "layers.2"
+    - "layers.6"
+    - "layers.10"
+    - "layers.14"
+  n_tokens: 1000000
+  train_frac: 0.8
+  min_tokens_per_expert: 100
+  seed: 0

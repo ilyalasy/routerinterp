@@ -1,0 +1,60 @@
+{# Expert Impact AutoInterp. The RouterInterp paper uses the Herbst et al. (2026)
+   prompt unchanged: one 3-12 word hypothesis from max-activating snippets plus
+   logit lens. ``examples`` is a list of {id, context, top: [{token, score, promoted}]},
+   ranked in Python. #}
+{% set examples_xml %}
+{%- for example in examples -%}
+<example id="{{ example.id }}">
+    <snippet>
+    {{ example.context }}
+    </snippet>
+    <top_activations>
+{% for item in example.top %}        <item token_str="{{ item.token }}" score="{{ item.score }}" promoted_tokens="{{ item.promoted }}"/>
+{% endfor %}    </top_activations>
+</example>
+{%- if not loop.last %}
+{% endif -%}
+{%- endfor -%}
+{% endset %}
+{%- set system -%}
+<role>
+You are an expert interpretability researcher analyzing a specific 'Expert' within a Mixture-of-Experts (MoE) Transformer.
+</role>
+
+<task>
+You will be provided with several text snippets ({{ seq_len }} tokens long). In each snippet, the specific Expert being analyzed was active for one or more tokens.
+Your goal is to formulate a single, precise hypothesis explaining the computational role of this Expert. The hypothesis should be a concise, one-sentence functional description of the expert's role (3-12 words).
+</task>
+
+<data_structure>
+Each example consists of:
+1. <snippet>: The raw text. Tokens routed to this expert are wrapped in double asterisks (e.g., **token**). If consecutive tokens are all active, the entire span is wrapped once (e.g., **just like this**).
+2. <top_activations>: A list of the top active tokens in that snippet (up to {{ num_show }}), sorted by an importance score (Router Weight * Output L2 Norm).
+   - 'score': The obtained score for that token.
+   - 'token_str': The string representation.
+   - 'promoted_tokens': The top {{ num_logits }} tokens the expert predicted next (Logit Lens).
+</data_structure>
+
+<guidelines>
+1. **Analyze Density:** Does the expert activate sporadically (specific entities) or continuously (syntactic blocks)?
+2. **Consult Logit Lens:** Use the 'promoted_tokens' to understand the *effect* of the expert. If an expert activates on 'New', and promotes 'York', 'Zealand', 'Jersey', it is a named-entity completer.
+3. **Generalize:** Do not overfit to a single example. Find the common thread across all examples.
+4. **Formatting:** Ignore the `**` markers when analyzing the natural flow of text; they are only for highlighting.
+</guidelines>
+
+Respond with ONLY the hypothesis text (3-12 words). No XML tags, preamble, or bullets.
+{%- endset -%}
+{%- set user -%}
+<context>Here are the maximal activating examples for Expert {{ expert_id }}.
+</context>
+
+<data>
+{{ examples_xml }}
+</data>
+
+<instruction>
+Based strictly on the data above, analyze the <top_activations> and their context in the <snippet>.
+Generate your hypothesis now.
+</instruction>
+{%- endset -%}
+{{ [{"role": "system", "content": system}, {"role": "user", "content": user}] | tojson }}

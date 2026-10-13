@@ -1,0 +1,86 @@
+[tool.poetry]
+name = "routerinterp"
+version = "0.1.0"
+description = "Code for paper 'RouterInterp: Understanding Superposed Specialisation in Mixture of Experts Routing'"
+authors = ["Ilya Lasy <ilyalas@gmail.com>", "Kola Ayonrinde <koayon@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "routerinterp", from = "src" }]
+include = ["src/routerinterp/prompts/*.jinja"]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+torch = "^2.9.0"
+transformers = "^4.56.2"
+accelerate = "^1.10.1"
+datasets = "^4.1.1"
+numpy = ">=1.26,<2.3"
+pydantic = "^2.10"
+typer = ">=0.12"
+safetensors = "^0.5"
+pyarrow = "^21.0"
+pandas = "^2.2"
+loguru = "^0.7.3"
+pyyaml = "^6.0"
+jinja2 = "^3.1"
+huggingface-hub = "^0.35.3"
+tqdm = "^4.67"
+scipy = "^1.15"
+scikit-learn = "^1.6"
+sentence-transformers = "^5.7.0"
+wandb = "^0.22.1"
+matplotlib = "^3.10"
+seaborn = "^0.13.2"
+python-dotenv = "^1.1.0"
+openrouter = "^0.10.7"
+
+# Installed by default. `poetry install --without sae` skips it; the SAE
+# libraries are imported only when a collect, select, or train-sae job loads them.
+[tool.poetry.group.sae.dependencies]
+eai-sparsify = "^1.2.1"
+dictionary-learning = "^0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+ruff = "^0.14.0"
+pyright = "^1.1.407"
+poethepoet = "^0.37.0"
+
+[tool.poetry.scripts]
+routerinterp = "routerinterp.cli:app"
+
+[tool.poe.tasks]
+lint = "ruff check src --fix"
+format = "ruff format src"
+typecheck = "pyright src"
+test = "pytest tests"
+check-all = ["lint", "format", "typecheck", "test"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["*.ipynb", "scripts/slurm"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "COM812",
+    "ISC001",
+    "E501",
+    "N803",
+    "N806",
+    "N815",
+]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+reportMissingTypeStubs = false
+reportMissingImports = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".git", ".venv", "__pycache__", "artifacts"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
